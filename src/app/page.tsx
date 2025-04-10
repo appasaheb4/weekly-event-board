@@ -236,8 +236,8 @@ export default function Home() {
               {...provided.droppableProps}
               ref={provided.innerRef}
             >
-              {items.map(({id, content}, index) => (
-                <Draggable key={id} draggableId={id} index={index}>
+              {items.map((item: any, index) => (
+                <Draggable key={item.id} draggableId={item.id} index={index}>
                   {(provided) => (
                     <li
                       className="p-4 bg-white border rounded shadow"
@@ -245,7 +245,7 @@ export default function Home() {
                       {...provided.draggableProps}
                       {...provided.dragHandleProps}
                     >
-                      {content}
+                      {item.content}
                     </li>
                   )}
                 </Draggable>
