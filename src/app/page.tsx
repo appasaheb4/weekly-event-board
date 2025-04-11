@@ -1,6 +1,32 @@
 'use client';
-import {DragDropContext, Droppable, Draggable} from 'react-beautiful-dnd';
-import {useState} from 'react';
+import './styles/index.scss';
+import {useCallback, useEffect, useRef, useState} from 'react';
+import type {
+  UniqueIdentifier,
+  DragStartEvent,
+  DragOverEvent,
+  DragEndEvent,
+  CollisionDetection,
+} from '@dnd-kit/core';
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  MeasuringStrategy,
+  pointerWithin,
+  rectIntersection,
+  getFirstCollision,
+} from '@dnd-kit/core';
+import {arrayMove, sortableKeyboardCoordinates} from '@dnd-kit/sortable';
+import classnames from 'classnames';
+
+import Container from './components/Container';
+import Item from './components/SortableItem';
 
 const weeklyDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
@@ -42,10 +68,20 @@ const getDate = (dayName: string) => {
   return targetDate.getDate() + dateSuffix(targetDate.getDate());
 };
 
-export default function Home() {
-  // get day wise date using js
+export interface ItemType {
+  title: string;
+  location: string;
+  description: string;
+}
 
-  const [items, setItems] = useState([
+export interface ItemsType {
+  day: string;
+  date: string;
+  items: ItemType[];
+}
+
+export default function Home() {
+  const [items, setItems] = useState<ItemsType[]>([
     {
       day: 'Monday',
       date: getDate('Monday'),
@@ -158,103 +194,277 @@ export default function Home() {
       ],
     },
   ]);
+  // Use the defined sensors for drag and drop operation
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        // Require mouse to move 5px to start dragging, this allow onClick to be triggered on click
+        distance: 5,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        // Require mouse to move 5px to start dragging, this allow onClick to be triggered on click
+        tolerance: 5,
+        // Require to press for 100ms to start dragging, this can reduce the chance of dragging accidentally due to page scroll
+        delay: 100,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
-  const handleOnDragEnd = (result: any) => {
-    if (!result.destination) return;
+  // State to keep track of currently active (being dragged) item
+  const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
+  const [activeItem, setActiveItem] = useState<ItemType | null>(null);
 
-    const reorderedItems = Array.from(items);
-    const [removed] = reorderedItems.splice(result.source.index, 1);
-    reorderedItems.splice(result.destination.index, 0, removed);
+  // Ref to store the ID of the last container that was hovered over during a drag
+  const lastOverId = useRef<UniqueIdentifier | null>(null);
 
-    setItems(reorderedItems);
-  };
+  // Ref to track if an item was just moved to a new container
+  const recentlyMovedToNewContainer = useRef(false);
+
+  // Function to find which container an item belongs to
+  const findContainer = useCallback(
+    (id: UniqueIdentifier) => {
+      // if the id is a container id itself
+      if (id in items) return id;
+
+      // find the container by looking into each of them
+      return items.find((item) =>
+        item.items.some((event) => event.title === id)
+      )?.day;
+    },
+    [items]
+  );
+
+  // Ref to store the state of items before a drag operation begins
+  const itemsBeforeDrag = useRef<any>(null);
+
+  const handleDragStart = useCallback(
+    ({active}: DragStartEvent) => {
+      console.log({active});
+      // Store the current state of items
+      itemsBeforeDrag.current = {...items};
+      // Set the active (dragged) item id
+      setActiveId(active.id);
+      setActiveItem(active.data.current as ItemType);
+    },
+    [items]
+  );
+
+  // Function called when an item is dragged over another container
+  const handleDragOver = useCallback(
+    ({active, over}: DragOverEvent) => {
+      if (!over || active.id in items) {
+        return;
+      }
+      const {id: activeId} = active;
+      const {id: overId} = over;
+      const activeContainer = findContainer(activeId);
+      const overContainer = findContainer(overId);
+      if (!overContainer || !activeContainer) {
+        return;
+      }
+      if (activeContainer !== overContainer) {
+        const activeItems =
+          items.find((item) => item.day === activeContainer)?.items || [];
+        const overItems =
+          items.find((item) => item.day === overContainer)?.items || [];
+        const overIndex = overItems.findIndex((item) => item.title === overId);
+        const activeIndex = activeItems.findIndex(
+          (item) => item.title === activeId
+        );
+        let newIndex: number;
+        const isBelowOverItem =
+          over &&
+          active.rect.current.translated &&
+          active.rect.current.translated.top > over.rect.top + over.rect.height;
+
+        const modifier = isBelowOverItem ? 1 : 0;
+
+        newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length + 1;
+
+        const result: any = [
+          ...items.map((container) => {
+            if (container.day === activeContainer) {
+              return {
+                ...container,
+                items: container.items.filter(
+                  (item) => item.title !== active.id
+                ),
+              };
+            }
+            if (container.day === overContainer) {
+              return {
+                ...container,
+                items: [
+                  ...container.items.slice(0, newIndex),
+                  items.find((c) => c.day === activeContainer)?.items[
+                    activeIndex
+                  ],
+                  ...container.items.slice(newIndex),
+                ],
+              };
+            }
+            return container;
+          }),
+        ];
+        setItems(result);
+      }
+    },
+    [items, findContainer]
+  );
+
+  // Function called when a drag operation ends
+  const handleDragEnd = useCallback(
+    ({active, over}: DragEndEvent) => {
+      const activeContainer = findContainer(active.id);
+      if (!over || !activeContainer) {
+        setActiveId(null);
+        return;
+      }
+      const {id: activeId} = active;
+      const {id: overId} = over;
+      const overContainer = findContainer(overId);
+      if (!overContainer) {
+        setActiveId(null);
+        return;
+      }
+      const activeContainerItems =
+        items.find((item) => item.day === activeContainer)?.items || [];
+      const activeIndex = activeContainerItems.findIndex(
+        (event) => event.title === activeId
+      );
+      const overIndex =
+        items
+          .find((item) => item.day === overContainer)
+          ?.items.findIndex((event) => event.title === overId) ?? -1;
+
+      if (activeIndex !== overIndex) {
+        const newItem = arrayMove(
+          items.find((item) => item.day === overContainer)?.items || [],
+          activeIndex,
+          overIndex
+        );
+        console.log({newItem});
+        setItems((prevItems) =>
+          prevItems.map((item) => {
+            if (item.day === overContainer) {
+              return {...item, items: newItem};
+            }
+            return item;
+          })
+        );
+      }
+      setActiveId(null);
+    },
+    [items, findContainer]
+  );
+
+  // Function called when a drag operation is cancelled
+  const onDragCancel = useCallback(() => {
+    setItems(itemsBeforeDrag.current ?? []);
+    itemsBeforeDrag.current = null;
+    setActiveId(null);
+  }, []);
+
+  const collisionDetectionStrategy: CollisionDetection = useCallback(
+    (args) => {
+      if (activeId && activeId in items) {
+        return closestCenter({
+          ...args,
+          droppableContainers: args.droppableContainers.filter(
+            (container) => container.id in items
+          ),
+        });
+      }
+
+      // Start by finding any intersecting droppable
+      const pointerIntersections = pointerWithin(args);
+      const intersections =
+        pointerIntersections.length > 0
+          ? // If there are droppables intersecting with the pointer, return those
+            pointerIntersections
+          : rectIntersection(args);
+      let overId = getFirstCollision(intersections, 'id');
+
+      if (overId != null) {
+        if (overId in items) {
+          const containerItems =
+            items.find((item) => item.day === overId)?.items || [];
+
+          // If a container is matched and it contains items (columns 'A', 'B', 'C')
+          if (containerItems.length > 0) {
+            // Return the closest droppable within that container
+            overId = closestCenter({
+              ...args,
+              droppableContainers: args.droppableContainers.filter(
+                (container) =>
+                  container.id !== overId &&
+                  containerItems.some((item) => item.title === container.id)
+              ),
+            })[0]?.id;
+          }
+        }
+
+        lastOverId.current = overId;
+
+        return [{id: overId}];
+      }
+
+      // When a draggable item moves to a new container, the layout may shift
+      // and the `overId` may become `null`. We manually set the cached `lastOverId`
+      // to the id of the draggable item that was moved to the new container, otherwise
+      // the previous `overId` will be returned which can cause items to incorrectly shift positions
+      if (recentlyMovedToNewContainer.current) {
+        lastOverId.current = activeId;
+      }
+
+      // If no droppable is matched, return the last match
+      return lastOverId.current ? [{id: lastOverId.current}] : [];
+    },
+    [activeId, items]
+  );
+
+  // useEffect hook called after a drag operation, to clear the "just moved" status
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      recentlyMovedToNewContainer.current = false;
+    });
+  }, [items]);
+
   return (
     <div className="flex flex-col p-12 mx-40">
       <span className="font-bold text-3xl">Weekly Event Board</span>
       <span className="text-gray-600">
         Manage and organize your weekly schedule with ease.
       </span>
-      <div className="flex w-full justify-between">
-        {weeklyDays.map((day) => (
-          <div
-            key={day}
-            className="flex flex-col rounded-lg bg-white m-2 shadow-md w-1/5"
-          >
-            <div
-              about="day-header"
-              className="flex w-full justify-between p-2 mb-1 rounded-t-3xl items-center mt-2 border-b-2 border-gray-200"
-            >
-              <span className="flex font-bold text-lg">{day}</span>
-              <span className="text-center min-w-14 bg-gray-200 rounded-2xl">
-                {items.find((item) => item.day === day)?.date}
-              </span>
-            </div>
-            {items
-              .find((item) => item.day === day)
-              ?.items.map((event, index) => (
-                <div key={index} className="flex flex-col p-2 bg-gray-50">
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
-                    <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-purple-600"></div>
-                    <div className="p-4">
-                      <div className="font-semibold text-gray-800">
-                        {event.title}
-                      </div>
-                      <div className="text-sm text-gray-500 mt-1 flex items-center">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          className="lucide lucide-map-pin w-3 h-3 mr-1"
-                        >
-                          <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path>
-                          <circle cx="12" cy="10" r="3"></circle>
-                        </svg>
-                        {event.location}
-                      </div>
-                      <div className="mt-3 text-sm text-gray-600 line-clamp-2">
-                        {event.description}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-          </div>
-        ))}
-      </div>
 
-      <DragDropContext onDragEnd={handleOnDragEnd}>
-        <Droppable droppableId="events">
-          {(provided) => (
-            <ul
-              className="mt-6 space-y-2"
-              {...provided.droppableProps}
-              ref={provided.innerRef}
-            >
-              {items.map((item: any, index) => (
-                <Draggable key={item.id} draggableId={item.id} index={index}>
-                  {(provided) => (
-                    <li
-                      className="p-4 bg-white border rounded shadow"
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                    >
-                      {item.content}
-                    </li>
-                  )}
-                </Draggable>
-              ))}
-              {provided.placeholder}
-            </ul>
-          )}
-        </Droppable>
-      </DragDropContext>
+      <div className="flex w-full justify-between">
+        <DndContext
+          sensors={sensors}
+          // collisionDetection={closestCenter}
+          collisionDetection={collisionDetectionStrategy}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={onDragCancel}
+          measuring={{
+            droppable: {
+              strategy: MeasuringStrategy.Always,
+            },
+          }}
+        >
+          {weeklyDays?.map((day, index) => (
+            <Container key={index} id={day} days={weeklyDays} items={items} />
+          ))}
+          <DragOverlay>
+            {activeId ? <Item item={activeItem as ItemType} /> : null}
+          </DragOverlay>
+        </DndContext>
+      </div>
     </div>
   );
 }

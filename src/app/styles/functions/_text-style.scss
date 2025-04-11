@@ -1,0 +1,35 @@
+// Generate text outline
+@function text-outline(
+  $stroke-width,
+  $stroke-color,
+  $stroke-offset-x: 0,
+  $stroke-offset-y: 0
+) {
+  $angle: 0;
+  $result: null;
+  $blur-radius: 0;
+
+  @while $angle < (2 * math.$pi) {
+    $offset-x: math.cos($angle) * $stroke-width * 1px + $stroke-offset-x;
+    $offset-y: math.sin($angle) * $stroke-width * 1px + $stroke-offset-y;
+    $current-result: $offset-x $offset-y $blur-radius $stroke-color;
+    $result: $result, $current-result;
+    $angle: $angle + math.div(1, $stroke-width);
+  }
+
+  @return $result;
+}
+
+// Generate text shadow in respect to text outline
+@function oblique-text-shadow($width, $expand, $color, $step: 0.25) {
+  $layer: 0;
+  $result: null;
+
+  @while $layer < $width {
+    $current-layer: text-outline($expand, $color, $layer, $layer);
+    $result: $result, $current-layer;
+    $layer: $layer + $step;
+  }
+
+  @return $result;
+}
