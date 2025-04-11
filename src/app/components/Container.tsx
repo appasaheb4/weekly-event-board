@@ -1,6 +1,5 @@
 import type {FC} from 'react';
 import {useDroppable} from '@dnd-kit/core';
-import type {UniqueIdentifier} from '@dnd-kit/core';
 import {SortableContext, verticalListSortingStrategy} from '@dnd-kit/sortable';
 
 import SortableItem from './SortableItem';
