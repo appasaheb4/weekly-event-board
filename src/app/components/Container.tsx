@@ -6,11 +6,12 @@ import {SortableContext, verticalListSortingStrategy} from '@dnd-kit/sortable';
 import SortableItem from './SortableItem';
 import {ItemsType} from '../page';
 
-const Container: FC<{days: string[]; items: ItemsType[]; id: string}> = ({
-  days,
-  items,
-  id,
-}) => {
+const Container: FC<{
+  days: string[];
+  items: ItemsType[];
+  id: string;
+  onSelectItem: (item: any) => void;
+}> = ({days, items, id, onSelectItem}) => {
   // This is needed for empty column to be droppable
   const {setNodeRef} = useDroppable({
     id: id,
@@ -40,7 +41,7 @@ const Container: FC<{days: string[]; items: ItemsType[]; id: string}> = ({
               id={id}
             >
               <div ref={setNodeRef}>
-                <SortableItem key={id} item={item} />
+                <SortableItem key={id} item={item} onSelect={onSelectItem} />
               </div>
             </SortableContext>
           </div>

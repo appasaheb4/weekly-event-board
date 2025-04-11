@@ -34,7 +34,10 @@ export const Item: FC<{
   );
 };
 
-const SortableItem: FC<{item: ItemType}> = ({item}) => {
+const SortableItem: FC<{item: ItemType; onSelect?: (item: any) => void}> = ({
+  item,
+  onSelect,
+}) => {
   const {attributes, listeners, setNodeRef, transform, transition, isDragging} =
     useSortable({id: item.title, data: item});
   const style = {
@@ -42,7 +45,13 @@ const SortableItem: FC<{item: ItemType}> = ({item}) => {
     transition,
   };
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={() => onSelect && onSelect(item)}
+    >
       <Item item={item} isDragging={isDragging} />
     </div>
   );

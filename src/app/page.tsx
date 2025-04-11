@@ -23,10 +23,13 @@ import {
   getFirstCollision,
 } from '@dnd-kit/core';
 import {arrayMove, sortableKeyboardCoordinates} from '@dnd-kit/sortable';
-import classnames from 'classnames';
 
 import Container from './components/Container';
 import Item from './components/SortableItem';
+import {
+  ModalEventDetails,
+  ModalEventDetailsProps,
+} from './components/ModalEventDetails.component';
 
 const weeklyDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
@@ -194,6 +197,9 @@ export default function Home() {
       ],
     },
   ]);
+  const [modalEventDetails, setModalEventDetails] = useState<
+    Partial<ModalEventDetailsProps>
+  >({});
   // Use the defined sensors for drag and drop operation
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -458,13 +464,33 @@ export default function Home() {
           }}
         >
           {weeklyDays?.map((day, index) => (
-            <Container key={index} id={day} days={weeklyDays} items={items} />
+            <Container
+              key={index}
+              id={day}
+              days={weeklyDays}
+              items={items}
+              onSelectItem={(item) => {
+                setModalEventDetails({
+                  details: item,
+                  visible: true,
+                });
+              }}
+            />
           ))}
           <DragOverlay>
             {activeId ? <Item item={activeItem as ItemType} /> : null}
           </DragOverlay>
         </DndContext>
       </div>
+      <ModalEventDetails
+        {...modalEventDetails}
+        onClose={() => {
+          setModalEventDetails({visible: false});
+        }}
+        onClick={(item) => {
+          setModalEventDetails({visible: false});
+        }}
+      />
     </div>
   );
 }

@@ -217,3 +217,32 @@ body {
     border-color: $color-sortable-item-tabbing-background !important;
   }
 }
+
+/* Modal overlay */
+.modal-overlay {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+/* Modal content with deploy animation */
+.modal-content {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+  animation: deploy 0.3s ease-out; /* Apply the deploy animation */
+}
+
+/* Deploy animation */
+@keyframes deploy {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
